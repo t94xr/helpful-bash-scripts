@@ -14,83 +14,132 @@
 
 #
 # Usage:
-# ./ia_upload.sh <collection_name> <file(s)>
+# ./upload_to_ia.sh -p -v -d retro-tech-mags 2025*
 # Example:
-# ./ia_upload.sh retro-tech-magazines 2025-04-10*
+# ./upload_to_ia.sh -p -v -d retro-tech-mags 2025*
 #
 
-# Check for jq (required!!)
+# Upload to Internet Archive with duplicate checking
+# Supports: Wildcards, parallel uploads, verbose/debug modes
+
+# ---- CONFIG ----
+MAX_JOBS=4
+
+# ---- FLAGS ----
+PARALLEL=false
+VERBOSE=false
+DEBUG=false
+
+# ---- JQ Check ----
 if ! command -v jq &> /dev/null; then
-  echo "⚠️  This script requires 'jq' but it's not installed."
-  echo ""
-  echo "👉 To install jq:"
-  echo "   - Debian/Ubuntu: sudo apt install jq"
-  echo "   - macOS (with Homebrew): brew install jq"
-  echo "   - Fedora: sudo dnf install jq"
-  echo "   - Arch: sudo pacman -S jq"
-  echo ""
-  echo "❌ Exiting. Please install jq and try again."
+  echo "⚠️  'jq' is required but not installed."
+  echo "Install it with: sudo apt install jq (or brew install jq on macOS)"
   exit 1
 fi
+
+# ---- Argument Parsing ----
+while [[ "$1" == -* ]]; do
+  case "$1" in
+    -p) PARALLEL=true ;;
+    -v) VERBOSE=true ;;
+    -d) DEBUG=true ;;
+    *) echo "❌ Unknown option: $1"; exit 1 ;;
+  esac
+  shift
+done
 
 COLLECTION="$1"
 shift
 FILES=("$@")
 
 if [[ -z "$COLLECTION" || ${#FILES[@]} -eq 0 ]]; then
-  echo "Usage: $0 <collection_name> <file(s)>"
-  echo "Example: $0 retro-tech-magazines 2025-04-10*"
+  echo "Usage: $0 [-p] [-v] [-d] <collection> <files...>"
+  echo "Example: $0 -p -v coppercab-archive 2025-04-10*"
   exit 1
 fi
 
-for FILE in "${FILES[@]}"; do
+# ---- Collection Permission Check ----
+echo "🧪 Verifying upload access to '$COLLECTION'..."
+if ! ia metadata "$COLLECTION" &> /dev/null; then
+  echo "❌ ERROR: Cannot access collection '$COLLECTION'."
+  echo "Check your login with 'ia whoami' or re-auth with 'ia configure'."
+  exit 1
+fi
+echo "✅ Access confirmed. Proceeding..."
+
+# ---- Main Upload Function ----
+process_file() {
+  local FILE="$1"
+  local COLLECTION="$2"
+
+  [[ "$VERBOSE" == true ]] && echo "📁 Processing '$FILE'..."
+
   if [[ ! -f "$FILE" ]]; then
     echo "❌ Skipping '$FILE' — not a regular file."
-    continue
+    return
   fi
 
-  BASENAME=$(basename "$FILE")
-  MD5=$(md5sum "$FILE" | awk '{ print $1 }')
+  local BASENAME=$(basename "$FILE")
+  local MD5=$(md5sum "$FILE" | awk '{ print $1 }')
+  local SHA1=$(sha1sum "$FILE" | awk '{ print $1 }')
 
-  echo "🔍 Searching for file '$BASENAME' (MD5: $MD5) in collection '$COLLECTION'..."
+  [[ "$DEBUG" == true ]] && echo "🔎 MD5: $MD5 | SHA1: $SHA1"
 
-  MATCH_FOUND=false
+  local MATCHED=false
 
   ia search "collection:$COLLECTION" | awk 'NR > 1 { print $1 }' | while read -r ID; do
-    echo "   ↪️ Checking item: $ID..."
+    [[ "$DEBUG" == true ]] && echo "🔍 Checking in item: $ID"
 
-    JSON=$(ia metadata "$ID" --format=json 2>/dev/null)
+    local METADATA=$(ia metadata "$ID" --format=json 2>/dev/null)
+    [[ "$DEBUG" == true ]] && echo "$METADATA" | jq '.files?'
 
-    # Check if filename matches exactly in metadata
-    MATCH_NAME=$(echo "$JSON" | jq -r --arg name "$BASENAME" '.files[]?.name' | grep -Fx "$BASENAME")
-    if [[ -n "$MATCH_NAME" ]]; then
-      echo "✅ Match found by filename in item '$ID'"
-      MATCH_FOUND=true
-      break
-    fi
+    MATCH=$(echo "$METADATA" | jq -r --arg fname "$BASENAME" --arg md5 "$MD5" --arg sha1 "$SHA1" '
+      .files[]? | select(.name == $fname or .md5 == $md5 or .sha1 == $sha1) | .name')
 
-    # Check if MD5 matches exactly in metadata
-    MATCH_MD5=$(echo "$JSON" | jq -r --arg md5 "$MD5" '.files[]?.md5' | grep -Fx "$MD5")
-    if [[ -n "$MATCH_MD5" ]]; then
-      echo "✅ Match found by MD5 in item '$ID'"
-      MATCH_FOUND=true
+    if [[ -n "$MATCH" ]]; then
+      echo "✅ Match found in '$ID': $MATCH"
+      MATCHED=true
       break
     fi
   done
 
-  if $MATCH_FOUND; then
-    echo "🚫 '$BASENAME' already exists in collection. Skipping upload."
-    continue
+  if [[ "$MATCHED" == true ]]; then
+    echo "🚫 '$BASENAME' already exists in collection. Skipping."
+    return
   fi
 
-  RAW_ID=$(basename "$FILE" | sed 's/\.[^.]*$//')
-  IDENTIFIER=$(echo "$RAW_ID" | tr '[:space:]/' '-' | tr -cd '[:alnum:]._-' | sed 's/^-*//;s/-*$//')
+  # Sanitize identifier
+  local RAW_ID=$(basename "$FILE" | sed 's/\.[^.]*$//')
+  local IDENTIFIER=$(echo "$RAW_ID" | tr '[:space:]/' '-' | tr -cd '[:alnum:]._-' | sed 's/^-*//;s/-*$//')
 
-  echo "⬆️  Uploading '$BASENAME' as identifier '$IDENTIFIER'..."
+  echo "⬆️  Uploading '$BASENAME' as '$IDENTIFIER'..."
 
   ia upload "$IDENTIFIER" "$FILE" \
     --metadata="collection:$COLLECTION" \
     --metadata="mediatype:movies" \
     --metadata="title:$RAW_ID" \
     --metadata="creator:Uploader Script"
+
+  [[ "$VERBOSE" == true ]] && echo "✅ Upload complete: $IDENTIFIER"
+}
+
+# ---- Parallel Control ----
+limit_parallel() {
+  while (( $(jobs -r | wc -l) >= MAX_JOBS )); do
+    sleep 0.5
+  done
+}
+
+# ---- Process All Files ----
+for FILE in "${FILES[@]}"; do
+  if $PARALLEL; then
+    limit_parallel
+    process_file "$FILE" "$COLLECTION" &
+  else
+    process_file "$FILE" "$COLLECTION"
+  fi
 done
+
+if $PARALLEL; then
+  wait
+fi
