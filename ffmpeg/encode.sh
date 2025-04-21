@@ -11,6 +11,10 @@ JOB_COUNT=0
 DELETE_ORIGINAL=false
 CODEC="av1"
 FILES=()
+FALLBACK=false
+
+# === Handle CTRL+C ===
+trap "echo '🛑 Caught interrupt. Terminating all encoding jobs...'; kill 0; exit 1" SIGINT
 
 # === Parse CLI arguments ===
 while [[ $# -gt 0 ]]; do
@@ -27,7 +31,11 @@ while [[ $# -gt 0 ]]; do
       CODEC="$2"
       shift 2
       ;;
-    -*))
+    --fallback)
+      FALLBACK=true
+      shift
+      ;;
+    -* )
       echo "Unknown option: $1"
       exit 1
       ;;
@@ -39,7 +47,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ ${#FILES[@]} -eq 0 ]; then
-  echo "Usage: $0 [--codec av1|hevc] [-j <jobs>] [--delete] <video_files...>"
+  echo "Usage: $0 [--codec av1|hevc] [-j <jobs>] [--delete] [--fallback] <video_files...>"
   exit 1
 fi
 
@@ -130,7 +138,6 @@ encode_file() {
   FILENAME="${BASENAME%.*}"
   EXT="${BASENAME##*.}"
   TMP_OUTPUT="${FILENAME}_${ENCODER}.${EXT}"
-
   FINAL_OUTPUT="${FILENAME}.${EXT}"
 
   if [[ -f "$FINAL_OUTPUT" && "$DELETE_ORIGINAL" == true ]]; then
@@ -140,45 +147,64 @@ encode_file() {
 
   echo "▶️ Encoding: $INPUT_FILE → $TMP_OUTPUT"
 
-  case "$ENCODER" in
-    av1_nvenc)
-      ffmpeg -y -hwaccel cuda -i "$INPUT_FILE" \
-        -c:v av1_nvenc -cq 28 -preset p7 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-    av1_qsv)
-      ffmpeg -y -init_hw_device qsv=hw:"$QSV_DEVICE" -filter_hw_device hw \
-        -i "$INPUT_FILE" \
-        -c:v av1_qsv -global_quality 28 -look_ahead 1 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-    libsvtav1)
-      ffmpeg -y -i "$INPUT_FILE" \
-        -c:v libsvtav1 -preset 8 -crf 35 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-    libaom-av1)
-      ffmpeg -y -i "$INPUT_FILE" \
-        -c:v libaom-av1 -crf 35 -b:v 0 -cpu-used 6 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-    hevc_nvenc)
-      ffmpeg -y -hwaccel cuda -i "$INPUT_FILE" \
-        -c:v hevc_nvenc -cq 28 -preset p7 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-    hevc_qsv)
-      ffmpeg -y -init_hw_device qsv=hw:"$QSV_DEVICE" -filter_hw_device hw \
-        -i "$INPUT_FILE" \
-        -c:v hevc_qsv -global_quality 28 -look_ahead 1 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-    libx265)
-      ffmpeg -y -i "$INPUT_FILE" \
-        -c:v libx265 -preset slow -crf 28 \
-        -c:a aac -b:a 96k "$TMP_OUTPUT"
-      ;;
-  esac
+  run_ffmpeg_encode() {
+    local encoder="$1"
+    TMP_OUTPUT="${FILENAME}_${encoder}.${EXT}"
+    case "$encoder" in
+      av1_nvenc)
+        ffmpeg -y -hwaccel cuda -i "$INPUT_FILE" \
+          -c:v av1_nvenc -cq 28 -preset p7 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+      av1_qsv)
+        ffmpeg -y -init_hw_device qsv=hw:"$QSV_DEVICE" -filter_hw_device hw \
+          -i "$INPUT_FILE" \
+          -c:v av1_qsv -global_quality 28 -look_ahead 1 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+      libsvtav1)
+        ffmpeg -y -i "$INPUT_FILE" \
+          -c:v libsvtav1 -preset 8 -crf 35 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+      libaom-av1)
+        ffmpeg -y -i "$INPUT_FILE" \
+          -c:v libaom-av1 -crf 35 -b:v 0 -cpu-used 6 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+      hevc_nvenc)
+        ffmpeg -y -hwaccel cuda -i "$INPUT_FILE" \
+          -c:v hevc_nvenc -cq 28 -preset p7 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+      hevc_qsv)
+        ffmpeg -y -init_hw_device qsv=hw:"$QSV_DEVICE" -filter_hw_device hw \
+          -i "$INPUT_FILE" \
+          -c:v hevc_qsv -global_quality 28 -look_ahead 1 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+      libx265)
+        ffmpeg -y -i "$INPUT_FILE" \
+          -c:v libx265 -preset slow -crf 28 \
+          -c:a aac -b:a 96k "$TMP_OUTPUT"
+        ;;
+    esac
+    return $?
+  }
+
+  run_ffmpeg_encode "$ENCODER"
+  if [[ $? -ne 0 && "$FALLBACK" == true ]]; then
+    echo "⚠️ Encoder $ENCODER failed for $INPUT_FILE"
+    FALLBACK_ENCODERS=(hevc_nvenc hevc_qsv libx265)
+    for fallback_encoder in "${FALLBACK_ENCODERS[@]}"; do
+      echo "🔁 Trying fallback: $fallback_encoder"
+      run_ffmpeg_encode "$fallback_encoder"
+      if [[ $? -eq 0 ]]; then
+        ENCODER="$fallback_encoder"
+        break
+      fi
+    done
+  fi
 
   if [[ -f "$TMP_OUTPUT" ]]; then
     if [ "$DELETE_ORIGINAL" = true ]; then
@@ -191,6 +217,7 @@ encode_file() {
     fi
   else
     echo "❌ Failed to encode: $INPUT_FILE"
+    [[ -f "$TMP_OUTPUT" ]] && rm -f "$TMP_OUTPUT"
   fi
 
   echo ""
