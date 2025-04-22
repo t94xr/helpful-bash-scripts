@@ -15,6 +15,7 @@ OPTIONS:
   --sha256          Use only SHA256 checksums
   --crc32           Use only CRC32 checksums
   --log             Log results to log.t
+  --summary         Show pass/fail summary after verification
   --help            Show this help message and exit
 
 EXAMPLES:
@@ -24,15 +25,14 @@ EXAMPLES:
   Generate all checksum types:
     ${0##*/} --all
 
-  Verify files against all checksum types:
-    ${0##*/} --all --check
+  Verify files against all checksum types and show summary:
+    ${0##*/} --all --check --summary
 
   Update hash entry for one file in all checksum files:
-    ${0##*/} --all --update file.iso
+    ${0##*/} --all --update "Zorin OS 16.3.iso"
 
 REQUIREMENTS:
   md5sum, sha1sum, sha256sum, crc32 must be installed on your system.
-
 EOF
     exit 0
 }
@@ -68,6 +68,7 @@ CHECK_MODE=false
 ALL_MODES=false
 UPDATE_MODE=false
 LOG_MODE=false
+SUMMARY_MODE=false
 HASH_TYPES=("md5")
 LOG_FILE="log.t"
 
@@ -97,6 +98,7 @@ for arg in "$@"; do
         --all) ALL_MODES=true ;;
         --update) UPDATE_MODE=true ;;
         --log) LOG_MODE=true ;;
+        --summary) SUMMARY_MODE=true ;;
     esac
 done
 
@@ -109,9 +111,8 @@ if ! $CHECK_MODE && ! [[ "$*" == *"--help"* ]]; then
     shopt -u nullglob
 
     if [[ ${#iso_files[@]} -eq 0 ]]; then
-        echo ""
-        echo "No ISO files found in the current directory."
-        echo ""
+        echo "⚠ No ISO files found in the current directory."
+        show_help
     fi
 fi
 
@@ -127,18 +128,33 @@ for hash in "${HASH_TYPES[@]}"; do
 
         echo "🔍 Verifying with $FILE"
         log_msg "Verifying with $FILE"
+
+        pass_count=0
+        fail_count=0
+
         while IFS= read -r line; do
             [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-            file=$(echo "$line" | awk '{print $2}')
+
+            file="${line#*  }"  # preserve full filename after hash
             echo "$line" | $CMD -c - &>/dev/null
             if [[ $? -eq 0 ]]; then
                 color_pass "✔ PASS: $file"
                 log_msg "✔ PASS: $file"
+                ((pass_count++))
             else
                 color_fail "✖ FAIL: $file"
                 log_msg "✖ FAIL: $file"
+                ((fail_count++))
             fi
         done < "$FILE"
+
+        if $SUMMARY_MODE; then
+            echo ""
+            echo "Summary for $FILE:"
+            echo "  Passed: $pass_count"
+            echo "  Failed: $fail_count"
+            log_msg "Summary for $FILE: Passed=$pass_count Failed=$fail_count"
+        fi
 
     elif $UPDATE_MODE; then
         ISO_LIST=()
@@ -149,7 +165,7 @@ for hash in "${HASH_TYPES[@]}"; do
         declare -A UPDATED_LINES
         [[ -f "$FILE" ]] && while IFS= read -r line; do
             [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-            f=$(echo "$line" | awk '{print $2}')
+            f="${line#*  }"
             UPDATED_LINES["$f"]="$line"
         done < "$FILE"
 
@@ -177,7 +193,7 @@ for hash in "${HASH_TYPES[@]}"; do
         declare -A EXISTING
         [[ -f "$FILE" ]] && while IFS= read -r line; do
             [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
-            EXISTING["$(echo "$line" | awk '{print $2}')"]=1
+            EXISTING["${line#*  }"]=1
         done < "$FILE"
 
         TMP_FILE=$(mktemp)
@@ -200,8 +216,8 @@ for hash in "${HASH_TYPES[@]}"; do
             echo "✅ Done writing $FILE"
             log_msg "✅ Done writing $FILE"
         else
-            echo "No new ISO files found for $hash — skipping $FILE"
-            log_msg "No new ISO files found for $hash — skipping $FILE"
+            echo "⚠ No new ISO files found for $hash — skipping $FILE"
+            log_msg "⚠ No new ISO files found for $hash — skipping $FILE"
         fi
 
         rm -f "$TMP_FILE"
