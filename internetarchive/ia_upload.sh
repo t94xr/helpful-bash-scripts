@@ -12,16 +12,6 @@
 # github.com/t94xr/helpful-bash-scripts
 #
 
-#
-# Usage:
-# ./upload_to_ia.sh -p -v -d retro-tech-mags 2025*
-# Example:
-# ./upload_to_ia.sh -p -v -d retro-tech-mags 2025*
-#
-
-# Upload to Internet Archive with duplicate checking
-# Supports: Wildcards, parallel uploads, verbose/debug modes
-
 # ---- CONFIG ----
 MAX_JOBS=4
 
@@ -30,44 +20,80 @@ PARALLEL=false
 VERBOSE=false
 DEBUG=false
 
-# ---- JQ Check ----
-if ! command -v jq &> /dev/null; then
-  echo "⚠️  'jq' is required but not installed."
-  echo "Install it with: sudo apt install jq (or brew install jq on macOS)"
-  exit 1
-fi
+# ---- HELP ----
+show_help() {
+  echo ""
+  echo "📦 Internet Archive Upload Script"
+  echo "----------------------------------"
+  echo "Usage: $0 [options] <collection> <file(s)>"
+  echo ""
+  echo "Options:"
+  echo "  -p              Enable parallel uploads (max $MAX_JOBS simultaneous jobs)"
+  echo "  -v              Verbose mode – show more upload info"
+  echo "  -d              Debug mode – print hashes, metadata, etc."
+  echo "  --help          Show this help message"
+  echo ""
+  echo "Arguments:"
+  echo "  <collection>    Internet Archive collection identifier (e.g. coppercab-archive)"
+  echo "  <file(s)>       One or more files or wildcards to upload"
+  echo ""
+  echo "Examples:"
+  echo "  $0 coppercab-archive video1.mp4"
+  echo "  $0 -p -v coppercab-archive 2025-04-10*"
+  echo ""
+  echo "Requires:"
+  echo "  - 'ia' CLI authenticated with 'ia configure'"
+  echo "  - 'jq' installed (for JSON parsing)"
+  echo ""
+}
 
-# ---- Argument Parsing ----
+# ---- PARSE FLAGS ----
 while [[ "$1" == -* ]]; do
   case "$1" in
     -p) PARALLEL=true ;;
     -v) VERBOSE=true ;;
     -d) DEBUG=true ;;
-    *) echo "❌ Unknown option: $1"; exit 1 ;;
+    --help)
+      show_help
+      exit 0
+      ;;
+    *)
+      echo "❌ Unknown option: $1"
+      show_help
+      exit 1
+      ;;
   esac
   shift
 done
 
+# ---- CHECK ARGS ----
 COLLECTION="$1"
 shift
 FILES=("$@")
 
 if [[ -z "$COLLECTION" || ${#FILES[@]} -eq 0 ]]; then
-  echo "Usage: $0 [-p] [-v] [-d] <collection> <files...>"
-  echo "Example: $0 -p -v coppercab-archive 2025-04-10*"
+  echo "❗ Missing collection or files."
+  show_help
   exit 1
 fi
 
-# ---- Collection Permission Check ----
+# ---- CHECK JQ ----
+if ! command -v jq &> /dev/null; then
+  echo "⚠️  'jq' is required but not installed."
+  echo "Install it with: sudo apt install jq (Linux) or brew install jq (macOS)"
+  exit 1
+fi
+
+# ---- CHECK COLLECTION ACCESS ----
 echo "🧪 Verifying upload access to '$COLLECTION'..."
 if ! ia metadata "$COLLECTION" &> /dev/null; then
   echo "❌ ERROR: Cannot access collection '$COLLECTION'."
-  echo "Check your login with 'ia whoami' or re-auth with 'ia configure'."
+  echo "Check your login with 'ia whoami' or re-authenticate with 'ia configure'."
   exit 1
 fi
 echo "✅ Access confirmed. Proceeding..."
 
-# ---- Main Upload Function ----
+# ---- FILE CHECK + UPLOAD ----
 process_file() {
   local FILE="$1"
   local COLLECTION="$2"
@@ -83,12 +109,12 @@ process_file() {
   local MD5=$(md5sum "$FILE" | awk '{ print $1 }')
   local SHA1=$(sha1sum "$FILE" | awk '{ print $1 }')
 
-  [[ "$DEBUG" == true ]] && echo "🔎 MD5: $MD5 | SHA1: $SHA1"
+  [[ "$DEBUG" == true ]] && echo "🔎 Hashes for '$BASENAME' — MD5: $MD5 | SHA1: $SHA1"
 
   local MATCHED=false
 
   ia search "collection:$COLLECTION" | awk 'NR > 1 { print $1 }' | while read -r ID; do
-    [[ "$DEBUG" == true ]] && echo "🔍 Checking in item: $ID"
+    [[ "$DEBUG" == true ]] && echo "🔍 Searching in item: $ID"
 
     local METADATA=$(ia metadata "$ID" --format=json 2>/dev/null)
     [[ "$DEBUG" == true ]] && echo "$METADATA" | jq '.files?'
@@ -108,7 +134,7 @@ process_file() {
     return
   fi
 
-  # Sanitize identifier
+  # Create safe identifier
   local RAW_ID=$(basename "$FILE" | sed 's/\.[^.]*$//')
   local IDENTIFIER=$(echo "$RAW_ID" | tr '[:space:]/' '-' | tr -cd '[:alnum:]._-' | sed 's/^-*//;s/-*$//')
 
@@ -123,14 +149,14 @@ process_file() {
   [[ "$VERBOSE" == true ]] && echo "✅ Upload complete: $IDENTIFIER"
 }
 
-# ---- Parallel Control ----
+# ---- PARALLEL LOGIC ----
 limit_parallel() {
   while (( $(jobs -r | wc -l) >= MAX_JOBS )); do
     sleep 0.5
   done
 }
 
-# ---- Process All Files ----
+# ---- PROCESS ALL FILES ----
 for FILE in "${FILES[@]}"; do
   if $PARALLEL; then
     limit_parallel
@@ -143,3 +169,4 @@ done
 if $PARALLEL; then
   wait
 fi
+
