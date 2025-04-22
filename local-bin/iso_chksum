@@ -102,6 +102,19 @@ done
 
 $ALL_MODES && HASH_TYPES=("md5" "sha1" "sha256" "crc32")
 
+# --------- CHECK FOR ISOS IF NOT IN --check or --help MODE ----------
+if ! $CHECK_MODE && ! [[ "$*" == *"--help"* ]]; then
+    shopt -s nullglob
+    iso_files=( *.iso )
+    shopt -u nullglob
+
+    if [[ ${#iso_files[@]} -eq 0 ]]; then
+        echo ""
+        echo "No ISO files found in the current directory."
+        echo ""
+    fi
+fi
+
 # --------- MAIN LOGIC ----------
 cd . || { echo "Failed to access current directory"; exit 1; }
 
@@ -168,8 +181,11 @@ for hash in "${HASH_TYPES[@]}"; do
         done < "$FILE"
 
         TMP_FILE=$(mktemp)
+        found_any=false
+
         for iso in *.iso; do
             [[ -f "$iso" && -z "${EXISTING[$iso]}" ]] || continue
+            found_any=true
             echo "Adding: $iso"
             if [[ "$hash" == "crc32" ]]; then
                 $CMD "$iso" | awk -v file="$iso" '{print $1 "  " file}' >> "$TMP_FILE"
@@ -178,10 +194,16 @@ for hash in "${HASH_TYPES[@]}"; do
             fi
         done
 
-        [[ -s "$TMP_FILE" ]] && cat "$TMP_FILE" >> "$FILE"
-        echo "# Checked: $(date '+%Y-%m-%d %H:%M:%S')" >> "$FILE"
+        if $found_any; then
+            cat "$TMP_FILE" >> "$FILE"
+            echo "# Checked: $(date '+%Y-%m-%d %H:%M:%S')" >> "$FILE"
+            echo "✅ Done writing $FILE"
+            log_msg "✅ Done writing $FILE"
+        else
+            echo "No new ISO files found for $hash — skipping $FILE"
+            log_msg "No new ISO files found for $hash — skipping $FILE"
+        fi
+
         rm -f "$TMP_FILE"
-        echo "✅ Done writing $FILE"
-        log_msg "✅ Done writing $FILE"
     fi
 done
