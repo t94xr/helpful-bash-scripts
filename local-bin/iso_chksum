@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# --------- HELP MENU ----------
+show_help() {
+    cat << EOF
+Usage: ${0##*/} [OPTIONS] [ISO_FILES...]
+
+Generate and verify checksums (md5, sha1, sha256, crc32) for ISO files in the current directory.
+
+OPTIONS:
+  --check           Verify existing checksum files (default uses chksum.md5.t)
+  --update          Update checksum for specified ISO file(s)
+  --all             Enable all hash types (md5, sha1, sha256, crc32)
+  --sha1            Use only SHA1 checksums
+  --sha256          Use only SHA256 checksums
+  --crc32           Use only CRC32 checksums
+  --log             Log results to log.t
+  --help            Show this help message and exit
+
+EXAMPLES:
+  Generate checksums (default md5) in current directory:
+    ${0##*/}
+
+  Generate all checksum types:
+    ${0##*/} --all
+
+  Verify files against all checksum types:
+    ${0##*/} --all --check
+
+  Update hash entry for one file in all checksum files:
+    ${0##*/} --all --update file.iso
+
+REQUIREMENTS:
+  md5sum, sha1sum, sha256sum, crc32 must be installed on your system.
+
+EOF
+    exit 0
+}
+
+# --------- CHECK FOR REQUIRED TOOLS ----------
+check_package() {
+    command -v "$1" &>/dev/null
+}
+
+install_instructions() {
+    echo "Required package '$1' is missing."
+    if [[ -f /etc/debian_version ]]; then
+        echo "For Debian/Ubuntu: sudo apt install $1"
+    elif [[ -f /etc/fedora-release ]]; then
+        echo "For Fedora: sudo dnf install $1"
+    elif [[ "$(uname)" == "Darwin" ]]; then
+        echo "For macOS: brew install $1"
+    else
+        echo "Unknown system. Install $1 manually."
+    fi
+}
+
+REQUIRED_TOOLS=("md5sum" "sha1sum" "sha256sum" "crc32")
+for tool in "${REQUIRED_TOOLS[@]}"; do
+    if ! check_package "$tool"; then
+        install_instructions "$tool"
+        exit 1
+    fi
+done
+
+# --------- FLAGS & CONFIG ----------
+CHECK_MODE=false
+ALL_MODES=false
+UPDATE_MODE=false
+LOG_MODE=false
+HASH_TYPES=("md5")
+LOG_FILE="log.t"
+
+declare -A HASH_CMDS=(
+  ["md5"]="md5sum"
+  ["sha1"]="sha1sum"
+  ["sha256"]="sha256sum"
+  ["crc32"]="crc32"
+)
+
+# --------- COLORS & LOGGING ----------
+color_pass() { echo -e "\033[1;32m$1\033[0m"; }
+color_fail() { echo -e "\033[1;31m$1\033[0m"; }
+
+log_msg() {
+    $LOG_MODE && echo "$1" >> "$LOG_FILE"
+}
+
+# --------- PARSE ARGS ----------
+for arg in "$@"; do
+    case "$arg" in
+        --help) show_help ;;
+        --check) CHECK_MODE=true ;;
+        --sha1) HASH_TYPES=("sha1") ;;
+        --sha256) HASH_TYPES=("sha256") ;;
+        --crc32) HASH_TYPES=("crc32") ;;
+        --all) ALL_MODES=true ;;
+        --update) UPDATE_MODE=true ;;
+        --log) LOG_MODE=true ;;
+    esac
+done
+
+$ALL_MODES && HASH_TYPES=("md5" "sha1" "sha256" "crc32")
+
+# --------- MAIN LOGIC ----------
+cd . || { echo "Failed to access current directory"; exit 1; }
+
+for hash in "${HASH_TYPES[@]}"; do
+    FILE="chksum.$hash.t"
+    CMD="${HASH_CMDS[$hash]}"
+
+    if $CHECK_MODE; then
+        [[ ! -f "$FILE" ]] && { echo "❌ No $FILE found."; log_msg "No $FILE found."; continue; }
+
+        echo "🔍 Verifying with $FILE"
+        log_msg "Verifying with $FILE"
+        while IFS= read -r line; do
+            [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+            file=$(echo "$line" | awk '{print $2}')
+            echo "$line" | $CMD -c - &>/dev/null
+            if [[ $? -eq 0 ]]; then
+                color_pass "✔ PASS: $file"
+                log_msg "✔ PASS: $file"
+            else
+                color_fail "✖ FAIL: $file"
+                log_msg "✖ FAIL: $file"
+            fi
+        done < "$FILE"
+
+    elif $UPDATE_MODE; then
+        ISO_LIST=()
+        for arg in "$@"; do [[ "$arg" == --* ]] && continue; ISO_LIST+=("$arg"); done
+        [[ ${#ISO_LIST[@]} -eq 0 ]] && mapfile -t ISO_LIST < <(find . -maxdepth 1 -name "*.iso" -printf "%f\n")
+
+        log_msg "🔁 Updating $FILE"
+        declare -A UPDATED_LINES
+        [[ -f "$FILE" ]] && while IFS= read -r line; do
+            [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+            f=$(echo "$line" | awk '{print $2}')
+            UPDATED_LINES["$f"]="$line"
+        done < "$FILE"
+
+        for iso in "${ISO_LIST[@]}"; do
+            if [[ -f "$iso" ]]; then
+                new_hash=$($CMD "$iso" | awk -v f="$iso" '{print $1 "  " f}')
+                UPDATED_LINES["$iso"]="$new_hash"
+                echo "Updated: $iso"
+                log_msg "Updated: $iso"
+            else
+                echo "⚠ File not found: $iso"
+                log_msg "⚠ File not found: $iso"
+            fi
+        done
+
+        {
+            for key in "${!UPDATED_LINES[@]}"; do echo "${UPDATED_LINES[$key]}"; done | sort
+            echo "# Checked: $(date '+%Y-%m-%d %H:%M:%S')"
+        } > "$FILE"
+        echo "✅ Updated $FILE"
+        log_msg "✅ Updated $FILE"
+
+    else
+        log_msg "💾 Generating $FILE"
+        declare -A EXISTING
+        [[ -f "$FILE" ]] && while IFS= read -r line; do
+            [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+            EXISTING["$(echo "$line" | awk '{print $2}')"]=1
+        done < "$FILE"
+
+        TMP_FILE=$(mktemp)
+        for iso in *.iso; do
+            [[ -f "$iso" && -z "${EXISTING[$iso]}" ]] || continue
+            echo "Adding: $iso"
+            if [[ "$hash" == "crc32" ]]; then
+                $CMD "$iso" | awk -v file="$iso" '{print $1 "  " file}' >> "$TMP_FILE"
+            else
+                $CMD "$iso" >> "$TMP_FILE"
+            fi
+        done
+
+        [[ -s "$TMP_FILE" ]] && cat "$TMP_FILE" >> "$FILE"
+        echo "# Checked: $(date '+%Y-%m-%d %H:%M:%S')" >> "$FILE"
+        rm -f "$TMP_FILE"
+        echo "✅ Done writing $FILE"
+        log_msg "✅ Done writing $FILE"
+    fi
+done
