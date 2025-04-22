@@ -16,6 +16,26 @@ FALLBACK=false
 # === Handle CTRL+C ===
 trap "echo '🛑 Caught interrupt. Terminating all encoding jobs...'; kill 0; exit 1" SIGINT
 
+# === Help message ===
+show_help() {
+  cat <<EOF
+Usage: $0 [OPTIONS] <video_files...>
+
+Options:
+  --codec av1|hevc     Select codec to use (default: av1)
+  -j <jobs>            Set number of parallel encoding jobs (default: 2)
+  --delete             Delete original file after successful encoding
+  --fallback           If encoding fails, fallback to alternative encoders:
+                       - AV1 fallback: hevc_nvenc → hevc_qsv → libx265
+  --help               Show this help message and exit
+
+Examples:
+  $0 --codec av1 video.mp4
+  $0 -j 4 --delete *.mkv
+  $0 --codec hevc --fallback video1.mp4 video2.mp4
+EOF
+}
+
 # === Parse CLI arguments ===
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +55,10 @@ while [[ $# -gt 0 ]]; do
       FALLBACK=true
       shift
       ;;
+    --help)
+      show_help
+      exit 0
+      ;;
     -* )
       echo "Unknown option: $1"
       exit 1
@@ -47,7 +71,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ ${#FILES[@]} -eq 0 ]; then
-  echo "Usage: $0 [--codec av1|hevc] [-j <jobs>] [--delete] [--fallback] <video_files...>"
+  show_help
   exit 1
 fi
 
@@ -202,6 +226,8 @@ encode_file() {
       if [[ $? -eq 0 ]]; then
         ENCODER="$fallback_encoder"
         break
+      else
+        [[ -f "$TMP_OUTPUT" ]] && rm -f "$TMP_OUTPUT"
       fi
     done
   fi
