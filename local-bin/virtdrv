@@ -1,0 +1,80 @@
+#!/bin/bash
+
+set -e
+
+show_help() {
+    echo "Usage:"
+    echo "  Mount:   $0 <size> <image_file> <mount_point>"
+    echo "           Example: $0 1G /tmp/disk.img /mnt/virtualdrive"
+    echo ""
+    echo "  Umount:  $0 --umount <image_file>"
+    echo "           Unmounts the image if currently mounted."
+    echo ""
+    echo "  Help:    $0 --help"
+    echo ""
+}
+
+# --help flag
+if [[ "$1" == "--help" ]]; then
+    show_help
+    exit 0
+fi
+
+# --umount flag
+if [[ "$1" == "--umount" ]]; then
+    IMAGE_FILE="$2"
+    if [[ -z "$IMAGE_FILE" ]]; then
+        echo "Error: Missing image file for --umount"
+        show_help
+        exit 1
+    fi
+
+    MOUNTED_PATH=$(mount | grep "$IMAGE_FILE" | awk '{print $3}')
+    if [[ -n "$MOUNTED_PATH" ]]; then
+        echo "Unmounting $IMAGE_FILE from $MOUNTED_PATH..."
+        sudo umount "$MOUNTED_PATH"
+        echo "Done."
+    else
+        echo "Image $IMAGE_FILE is not currently mounted."
+    fi
+    exit 0
+fi
+
+# Normal mount mode
+SIZE="$1"
+IMAGE_FILE="$2"
+MOUNT_POINT="$3"
+
+if [[ -z "$SIZE" || -z "$IMAGE_FILE" || -z "$MOUNT_POINT" ]]; then
+    echo "Error: Missing arguments."
+    show_help
+    exit 1
+fi
+
+# Check if image is already mounted
+if mount | grep -q "$IMAGE_FILE"; then
+    echo "Image $IMAGE_FILE is already mounted:"
+    mount | grep "$IMAGE_FILE"
+    exit 0
+fi
+
+# Create mount point if needed
+if [ ! -d "$MOUNT_POINT" ]; then
+    echo "Creating mount point at $MOUNT_POINT"
+    sudo mkdir -p "$MOUNT_POINT"
+fi
+
+# Create image file if it doesn't exist
+if [ ! -f "$IMAGE_FILE" ]; then
+    echo "Creating virtual disk image at $IMAGE_FILE with size $SIZE..."
+    sudo dd if=/dev/zero of="$IMAGE_FILE" bs=1 count=0 seek="$SIZE"
+    echo "Formatting with ext4..."
+    sudo mkfs.ext4 "$IMAGE_FILE"
+else
+    echo "Image file $IMAGE_FILE already exists."
+fi
+
+# Mount the image
+echo "Mounting $IMAGE_FILE to $MOUNT_POINT..."
+sudo mount -o loop "$IMAGE_FILE" "$MOUNT_POINT"
+echo "Done. Mounted $IMAGE_FILE to $MOUNT_POINT"
