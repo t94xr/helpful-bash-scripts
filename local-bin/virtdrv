@@ -3,13 +3,14 @@
 set -e
 
 show_help() {
+    SCRIPT_NAME=$(basename "$0")  # Get the script name without the path
     echo "Usage:"
-    echo "  Mount:   $0 [--fs <fstype>] [--label <label>] [--readonly] [--auto-mount] <size> <image_file> <mount_point>"
-    echo "           Example: $0 --fs ext4 --label MyDisk 1G /tmp/disk.img /mnt/drive"
+    echo "  Mount:   $SCRIPT_NAME [--fs <fstype>] [--label <label>] [--readonly] [--auto-mount] <size> <image_file> <mount_point>"
+    echo "           Example: $SCRIPT_NAME --fs ext4 --label MyDisk 1G /tmp/disk.img /mnt/drive"
     echo ""
-    echo "  Umount:  $0 --umount <image_file>"
-    echo "  Resize:  $0 --resize <new_size> <image_file>"
-    echo "  Help:    $0 --help"
+    echo "  Umount:  $SCRIPT_NAME --umount <image_file>"
+    echo "  Resize:  $SCRIPT_NAME --resize <new_size> <image_file>"
+    echo "  Help:    $SCRIPT_NAME --help"
     echo ""
     echo "  Supported filesystems: ext4, ext3, ext2, xfs, btrfs, jfs"
 }
