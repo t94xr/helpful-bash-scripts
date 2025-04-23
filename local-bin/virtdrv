@@ -4,43 +4,101 @@ set -e
 
 show_help() {
     echo "Usage:"
-    echo "  Mount:   $0 <size> <image_file> <mount_point>"
-    echo "           Example: $0 1G /tmp/disk.img /mnt/virtualdrive"
+    echo "  Mount:   $0 [--fs <fstype>] [--label <label>] [--readonly] [--auto-mount] <size> <image_file> <mount_point>"
+    echo "           Example: $0 --fs ext4 --label MyDisk 1G /tmp/disk.img /mnt/drive"
     echo ""
     echo "  Umount:  $0 --umount <image_file>"
-    echo "           Unmounts the image if currently mounted."
-    echo ""
+    echo "  Resize:  $0 --resize <new_size> <image_file>"
     echo "  Help:    $0 --help"
     echo ""
+    echo "  Supported filesystems: ext4, ext3, ext2, xfs, btrfs, jfs"
 }
 
-# --help flag
-if [[ "$1" == "--help" ]]; then
-    show_help
-    exit 0
-fi
+# Default values
+FS_TYPE="ext4"
+LABEL=""
+READONLY=false
+AUTOMOUNT=false
 
-# --umount flag
-if [[ "$1" == "--umount" ]]; then
-    IMAGE_FILE="$2"
-    if [[ -z "$IMAGE_FILE" ]]; then
-        echo "Error: Missing image file for --umount"
-        show_help
-        exit 1
-    fi
+# Flag parsing
+while [[ "$1" == --* ]]; do
+    case "$1" in
+        --help)
+            show_help
+            exit 0
+            ;;
+        --umount)
+            IMAGE_FILE="$2"
+            if [[ -z "$IMAGE_FILE" ]]; then
+                echo "Error: Missing image file for --umount"
+                show_help
+                exit 1
+            fi
+            MOUNTED_PATH=$(mount | grep "$IMAGE_FILE" | awk '{print $3}')
+            if [[ -n "$MOUNTED_PATH" ]]; then
+                echo "Unmounting $IMAGE_FILE from $MOUNTED_PATH..."
+                sudo umount "$MOUNTED_PATH"
+                echo "Done."
+            else
+                echo "Image $IMAGE_FILE is not currently mounted."
+            fi
+            exit 0
+            ;;
+        --resize)
+            NEW_SIZE="$2"
+            IMAGE_FILE="$3"
+            if [[ -z "$NEW_SIZE" || -z "$IMAGE_FILE" ]]; then
+                echo "Error: Missing arguments for --resize"
+                show_help
+                exit 1
+            fi
 
-    MOUNTED_PATH=$(mount | grep "$IMAGE_FILE" | awk '{print $3}')
-    if [[ -n "$MOUNTED_PATH" ]]; then
-        echo "Unmounting $IMAGE_FILE from $MOUNTED_PATH..."
-        sudo umount "$MOUNTED_PATH"
-        echo "Done."
-    else
-        echo "Image $IMAGE_FILE is not currently mounted."
-    fi
-    exit 0
-fi
+            echo "Resizing $IMAGE_FILE to $NEW_SIZE..."
 
-# Normal mount mode
+            # Check if the image file exists
+            if [ ! -f "$IMAGE_FILE" ]; then
+                echo "Error: Image file $IMAGE_FILE does not exist."
+                exit 1
+            fi
+
+            # Resize the image file using dd
+            sudo dd if=/dev/zero bs=1 count=0 seek="$NEW_SIZE" of="$IMAGE_FILE"
+            echo "Image file resized."
+
+            # Resize the filesystem (for ext4 in this example)
+            LOOP_DEVICE=$(sudo losetup --find --show "$IMAGE_FILE")
+            sudo e2fsck -f "$LOOP_DEVICE"
+            sudo resize2fs "$LOOP_DEVICE"
+            sudo losetup -d "$LOOP_DEVICE"
+            
+            echo "Filesystem resized. NOTE: If the image has partitions, you may need to resize them manually using fdisk or parted."
+            exit 0
+            ;;
+        --fs)
+            FS_TYPE="$2"
+            shift 2
+            ;;
+        --label)
+            LABEL="$2"
+            shift 2
+            ;;
+        --readonly)
+            READONLY=true
+            shift
+            ;;
+        --auto-mount)
+            AUTOMOUNT=true
+            shift
+            ;;
+        *)
+            echo "Unknown flag: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# Positional arguments
 SIZE="$1"
 IMAGE_FILE="$2"
 MOUNT_POINT="$3"
@@ -51,30 +109,68 @@ if [[ -z "$SIZE" || -z "$IMAGE_FILE" || -z "$MOUNT_POINT" ]]; then
     exit 1
 fi
 
-# Check if image is already mounted
+# Create mount point if it doesn't exist
+if [ ! -d "$MOUNT_POINT" ]; then
+    echo "Creating mount point at $MOUNT_POINT"
+    sudo mkdir -p "$MOUNT_POINT"
+fi
+
+# Check if the image is already mounted
 if mount | grep -q "$IMAGE_FILE"; then
     echo "Image $IMAGE_FILE is already mounted:"
     mount | grep "$IMAGE_FILE"
     exit 0
 fi
 
-# Create mount point if needed
-if [ ! -d "$MOUNT_POINT" ]; then
-    echo "Creating mount point at $MOUNT_POINT"
-    sudo mkdir -p "$MOUNT_POINT"
-fi
-
 # Create image file if it doesn't exist
 if [ ! -f "$IMAGE_FILE" ]; then
     echo "Creating virtual disk image at $IMAGE_FILE with size $SIZE..."
     sudo dd if=/dev/zero of="$IMAGE_FILE" bs=1 count=0 seek="$SIZE"
-    echo "Formatting with ext4..."
-    sudo mkfs.ext4 "$IMAGE_FILE"
+
+    echo "Formatting with $FS_TYPE..."
+    case "$FS_TYPE" in
+        ext4|ext3|ext2)
+            CMD="sudo mkfs.$FS_TYPE"
+            [[ -n "$LABEL" ]] && CMD+=" -L $LABEL"
+            eval "$CMD \"$IMAGE_FILE\""
+            ;;
+        xfs)
+            CMD="sudo mkfs.xfs"
+            [[ -n "$LABEL" ]] && CMD+=" -L $LABEL"
+            eval "$CMD \"$IMAGE_FILE\""
+            ;;
+        btrfs|jfs)
+            CMD="sudo mkfs.$FS_TYPE"
+            [[ -n "$LABEL" ]] && CMD+=" -L $LABEL"
+            eval "$CMD \"$IMAGE_FILE\""
+            ;;
+        *)
+            echo "Unsupported filesystem: $FS_TYPE"
+            exit 1
+            ;;
+    esac
 else
     echo "Image file $IMAGE_FILE already exists."
 fi
 
 # Mount the image
+MOUNT_OPTIONS="loop"
+$READONLY && MOUNT_OPTIONS+=",ro"
+
 echo "Mounting $IMAGE_FILE to $MOUNT_POINT..."
-sudo mount -o loop "$IMAGE_FILE" "$MOUNT_POINT"
-echo "Done. Mounted $IMAGE_FILE to $MOUNT_POINT"
+sudo mount -o "$MOUNT_OPTIONS" "$IMAGE_FILE" "$MOUNT_POINT"
+echo "Mounted successfully."
+
+# Auto-mount setup in /etc/fstab
+if $AUTOMOUNT; then
+    FSTAB_ENTRY="$IMAGE_FILE $MOUNT_POINT $FS_TYPE loop"
+    $READONLY && FSTAB_ENTRY+=",ro"
+    FSTAB_ENTRY+=" 0 0"
+
+    if ! grep -qs "$IMAGE_FILE" /etc/fstab; then
+        echo "Adding auto-mount entry to /etc/fstab..."
+        echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab > /dev/null
+    else
+        echo "An entry for $IMAGE_FILE already exists in /etc/fstab. Skipping."
+    fi
+fi
