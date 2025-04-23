@@ -3,14 +3,15 @@
 # --------- HELP MENU ----------
 show_help() {
     cat << EOF
-Usage: ${0##*/} [OPTIONS] [ISO_FILES...]
+Usage: ${0##*/} [OPTIONS] [FILES...]
 
-Generate and verify checksums (md5, sha1, sha256, crc32) for ISO files in the current directory.
+Generate and verify checksums (md5, sha1, sha256, crc32) for files in the current directory.
 
 OPTIONS:
   --check           Verify existing checksum files (default uses chksum.md5.t)
-  --update          Update checksum for specified ISO file(s)
+  --update          Update checksum for specified file(s)
   --all             Enable all hash types (md5, sha1, sha256, crc32)
+  --alltypes        Include all file types in current directory (not just *.iso)
   --sha1            Use only SHA1 checksums
   --sha256          Use only SHA256 checksums
   --crc32           Use only CRC32 checksums
@@ -22,11 +23,11 @@ EXAMPLES:
   Generate checksums (default md5) in current directory:
     ${0##*/}
 
-  Generate all checksum types:
-    ${0##*/} --all
+  Generate all checksum types for all files:
+    ${0##*/} --all --alltypes
 
-  Verify files against all checksum types and show summary:
-    ${0##*/} --all --check --summary
+  Verify files and show summary:
+    ${0##*/} --check --summary
 
   Update hash entry for one file in all checksum files:
     ${0##*/} --all --update "Zorin OS 16.3.iso"
@@ -66,6 +67,7 @@ done
 # --------- FLAGS & CONFIG ----------
 CHECK_MODE=false
 ALL_MODES=false
+ALLTYPES_MODE=false
 UPDATE_MODE=false
 LOG_MODE=false
 SUMMARY_MODE=false
@@ -87,7 +89,7 @@ log_msg() {
     $LOG_MODE && echo "$1" >> "$LOG_FILE"
 }
 
-# --------- PARSE ARGS ----------
+# --------- ARGUMENT PARSING ----------
 for arg in "$@"; do
     case "$arg" in
         --help) show_help ;;
@@ -96,6 +98,7 @@ for arg in "$@"; do
         --sha256) HASH_TYPES=("sha256") ;;
         --crc32) HASH_TYPES=("crc32") ;;
         --all) ALL_MODES=true ;;
+        --alltypes) ALLTYPES_MODE=true ;;
         --update) UPDATE_MODE=true ;;
         --log) LOG_MODE=true ;;
         --summary) SUMMARY_MODE=true ;;
@@ -104,14 +107,20 @@ done
 
 $ALL_MODES && HASH_TYPES=("md5" "sha1" "sha256" "crc32")
 
-# --------- CHECK FOR ISOS IF NOT IN --check or --help MODE ----------
-if ! $CHECK_MODE && ! [[ "$*" == *"--help"* ]]; then
-    shopt -s nullglob
-    iso_files=( *.iso )
-    shopt -u nullglob
+# --------- FILE COLLECTION ----------
+get_files() {
+    if $ALLTYPES_MODE; then
+        find . -maxdepth 1 -type f ! -name "chksum.*.t" ! -name "log.t" ! -name "${0##*/}" -printf "%f\n"
+    else
+        find . -maxdepth 1 -name "*.iso" -printf "%f\n"
+    fi
+}
 
-    if [[ ${#iso_files[@]} -eq 0 ]]; then
-        echo "⚠ No ISO files found in the current directory."
+file_list=()
+if ! $CHECK_MODE && ! [[ "$*" == *"--help"* ]]; then
+    mapfile -t file_list < <(get_files)
+    if [[ ${#file_list[@]} -eq 0 ]]; then
+        echo "⚠ No target files found in the current directory."
         show_help
     fi
 fi
@@ -135,7 +144,7 @@ for hash in "${HASH_TYPES[@]}"; do
         while IFS= read -r line; do
             [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
 
-            file="${line#*  }"  # preserve full filename after hash
+            file="${line#*  }"
             echo "$line" | $CMD -c - &>/dev/null
             if [[ $? -eq 0 ]]; then
                 color_pass "✔ PASS: $file"
@@ -159,7 +168,7 @@ for hash in "${HASH_TYPES[@]}"; do
     elif $UPDATE_MODE; then
         ISO_LIST=()
         for arg in "$@"; do [[ "$arg" == --* ]] && continue; ISO_LIST+=("$arg"); done
-        [[ ${#ISO_LIST[@]} -eq 0 ]] && mapfile -t ISO_LIST < <(find . -maxdepth 1 -name "*.iso" -printf "%f\n")
+        [[ ${#ISO_LIST[@]} -eq 0 ]] && mapfile -t ISO_LIST < <(get_files)
 
         log_msg "🔁 Updating $FILE"
         declare -A UPDATED_LINES
@@ -199,7 +208,7 @@ for hash in "${HASH_TYPES[@]}"; do
         TMP_FILE=$(mktemp)
         found_any=false
 
-        for iso in *.iso; do
+        for iso in "${file_list[@]}"; do
             [[ -f "$iso" && -z "${EXISTING[$iso]}" ]] || continue
             found_any=true
             echo "Adding: $iso"
@@ -216,8 +225,8 @@ for hash in "${HASH_TYPES[@]}"; do
             echo "✅ Done writing $FILE"
             log_msg "✅ Done writing $FILE"
         else
-            echo "⚠ No new ISO files found for $hash — skipping $FILE"
-            log_msg "⚠ No new ISO files found for $hash — skipping $FILE"
+            echo "⚠ No new files to add for $hash — skipping $FILE"
+            log_msg "⚠ No new files to add for $hash — skipping $FILE"
         fi
 
         rm -f "$TMP_FILE"
