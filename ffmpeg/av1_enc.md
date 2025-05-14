@@ -13,6 +13,43 @@
 - **Handles Common Video Formats:** It supports a wide range of input video formats, including .mp4, .mkv, .avi, .mov, .wmv, .flv, and .webm.
 - **Size Reduction Reporting:** Displays the size reduction percentage achieved after encoding, allowing you to see the benefits of AV1 compression.
 
+## AV1 Encoding Script Workflow
+
+Here's a breakdown of the steps the script performs for each video file it processes:
+
+1.  **Initialization:**
+    * Sets up constants for the log file, AV1 extension, screen output preference, and the number of threads.
+    * Defines helper functions for formatting file sizes, getting file sizes, and colored terminal output.
+
+2.  **File Discovery:**
+    * The `main()` function uses `os.walk(".")` to recursively find all files within the current directory and its subfolders.
+    * It filters these files based on a list of common video file extensions (`.mp4`, `.mkv`, `.avi`, etc.).
+
+3.  **Parallel Processing:**
+    * For each discovered video file, a new thread is created to execute the `process_video_file` function.
+    * The script limits the number of concurrently running threads to the value specified by `NUM_THREADS`.
+
+4.  **`process_video_file()` Function - Per File Steps:**
+    * **Initialization:** Creates the temporary directory `/ssd/av1_tmp/` if it doesn't exist. Constructs paths for the source file in the temporary directory and the final AV1 file.
+    * **Logging Start:** Logs the start of processing for the current file.
+    * **Get Source Size:** Determines and logs the size of the original video file.
+    * **Detect Input Codec:** Uses `ffprobe` to identify the video codec of the input file. If the codec cannot be determined, the script skips the file.
+    * **Skip AV1 Files:** If the detected input codec is already `av1`, the script logs a message and moves on to the next file.
+    * **Copy to Temporary Directory:** The original video file is copied to `/ssd/av1_tmp/`.
+    * **Encode to AV1:** FFmpeg is called to encode the video file in the temporary directory to AV1 format (`filename.mkv` in `/ssd/av1_tmp/`). Hardware acceleration (QSV) is attempted.
+    * **Logging Encoding Results:** If encoding is successful, the size of the encoded file and the size reduction percentage are calculated and logged.
+    * **Delete Temporary Source:** The original video file in `/ssd/av1_tmp/` is deleted.
+    * **Move Back to Source Folder:** The newly encoded AV1 file is moved from `/ssd/av1_tmp/` back to the original directory of the source file, **replacing** the original file.
+    * **Logging Completion:** Logs the successful move of the encoded file.
+    * **Error Handling:** Includes `try...except` blocks to catch potential errors during file operations (copying, encoding, moving, deleting) and logs these errors.
+    * **Cleanup (on Encoding Failure):** If encoding fails for a file, any temporary copy in `/ssd/av1_tmp/` is cleaned up.
+
+5.  **Completion:**
+    * The `main()` function waits for all threads to finish processing.
+    * A final "encoding process complete" message is logged and printed.
+
+Throughout the process, messages are printed to the terminal with color-coding (green for success, red for errors, yellow for skipped AV1 files) to provide real-time feedback. All actions are also recorded in the specified log file.
+
 ## Prerequisites
 
 * **Python 3:** Ensure Python 3 is installed. Check with `python3 --version`.
