@@ -13,11 +13,7 @@
 - **Handles Common Video Formats:** It supports a wide range of input video formats, including .mp4, .mkv, .avi, .mov, .wmv, .flv, and .webm.
 - **Size Reduction Reporting:** Displays the size reduction percentage achieved after encoding, allowing you to see the benefits of AV1 compression.
 
-# Usage
-
-This document provides instructions on how to use the AV1 encoding script.
-
-## 1. Prerequisites
+## Prerequisites
 
 * **Python 3:** Ensure Python 3 is installed. Check with `python3 --version`.
 * **FFmpeg:** FFmpeg is required for encoding and probing. Install it if you haven't:
@@ -26,7 +22,7 @@ This document provides instructions on how to use the AV1 encoding script.
     * **Windows:** Download from the FFmpeg website and add its `bin` directory to your PATH.
 * **Intel QSV (Optional):** For hardware acceleration, you need an Intel CPU with QSV support and the necessary drivers. Linux users should ensure `/dev/dri/renderD128` (or similar) exists.
 
-## 2. Script Setup
+## Script Setup
 
 1.  **Save the Script:** Save the Python script code as a `.py` file (e.g., `av1_encoder.py`).
 2.  **Make Executable (Linux/macOS):** In your terminal, navigate to the script's directory and run:
@@ -39,7 +35,7 @@ This document provides instructions on how to use the AV1 encoding script.
     * **`PRINT_TO_SCREEN`:** Set to `False` to disable colored terminal output.
     * **`NUM_THREADS`:** Adjust the number of parallel encoding jobs (default: 4).
 
-## 3. Usage Examples
+## Usage Examples
 
 **Basic Usage (from the directory containing videos):**
 
@@ -66,7 +62,7 @@ This document provides instructions on how to use the AV1 encoding script.
 
 The current script version is designed to be run from the root of your video library due to its use of `os.walk(".")`. To process a specific directory from elsewhere, you would need to modify the `main()` function to accept a command-line argument for the target directory.
 
-## 4. Important Considerations
+## Important Considerations
 
 > [!CAUTION]
 > This script will delete the original media in a given directory it's run on - it will delete the file AFTER a successful encode.
@@ -81,8 +77,8 @@ The current script version is designed to be run from the root of your video lib
 * **Quality:** The default encoding parameters are used. Adjust the `encode_av1` function for specific quality needs (e.g., using `-crf`).
 * **QSV Compatibility:** If QSV is not available, software encoding will be used, which is slower. Check the output for QSV-related messages.
 
-## 5. Example Output (Illustrative)
-### Example Output
+
+## Example Output
 
 ```
 [2025-05-15 09:30:00] Starting AV1 encoding process with 4 threads. [BLUE]Starting AV1 encoding process with 4 threads.[RESET]
