@@ -76,7 +76,7 @@ A Python script to recursively find video files in a directory, encode them to A
     SOURCE_DIRECTORY = Path(".")  # Directory to scan ('.' for current, or e.g., '/mnt/videos')
     TEMP_DIRECTORY = Path("/ssd/av1_tmp") # Temporary space for encoding (SSD/NVMe recommended)
     METRICS_FILE = Path("/ssd/av1_enc.json") # File to save encoding results
-    MAX_CONCURRENT_JOBS = 15  # Max number of ffmpeg processes at a time (adjust based on CPU/QSV capability)
+    MAX_CONCURRENT_JOBS = 5  # Max number of ffmpeg processes at a time (adjust based on CPU/QSV capability)
     FFMPEG_PATH = "ffmpeg"  # Path to ffmpeg executable if not in PATH
     FFPROBE_PATH = "ffprobe" # Path to ffprobe executable if not in PATH
     QSV_DEVICE = "/dev/dri/card0" # QSV device path (verify on your system)
@@ -123,8 +123,8 @@ The script will start, scan for files, and launch the curses UI. Use the Up Arro
 > Encoding involves heavy I/O operations (reading the source, writing the temporary encoded file). Using a fast drive, ideally an NVMe SSD, for the `TEMP_DIRECTORY` can significantly improve encoding speed and reduce strain on slower drives.
 
 * **Backups:** Seriously, make backups. This script will overwrite your originals.
-* **Disk Space:** The `TEMP_DIRECTORY` will temporarily hold copies of the source files and the encoded files simultaneously during processing. Ensure you have enough free space on the drive hosting the temporary directory, at least equal to the size of the largest video file being processed concurrently by `MAX_CONCURRENT_JOBS`. The source drive also needs space as files are processed sequentially (copying out, then moving the new file back in).
-* **Encoding Time:** Encoding speed is primarily dependent on your Intel CPU's QSV capabilities and the complexity of the video. The script uses default `av1_qsv` settings which aim for a balance of speed and quality; you may need to modify the `ffmpeg` command in the script for specific quality/bitrate targets if needed.
+* **Disk Space:** The `TEMP_DIRECTORY` will temporarily hold copies of the source and encoded files simultaneously during processing. Ensure you have enough free space on the drive hosting the temporary directory, at least equal to the size of the largest video file being processed concurrently by `MAX_CONCURRENT_JOBS`. The source drive also needs space as files are processed sequentially (copying out, then moving the new file back in).
+* **Encoding Time:** Encoding speed primarily depends on your Intel CPU's QSV capabilities and the complexity of the video. The script uses default `av1_qsv` settings which aim for a balance of speed and quality; you may need to modify the `ffmpeg` command in the script for specific quality/bitrate targets if needed.
 * **Quality Parameters:** The current `ffmpeg` command uses the default `av1_qsv` encoder settings (`-c:v av1_qsv`). For more control over quality vs. file size, you would need to add options like `-global_quality <0-255>` (for VBR mode) or other QSV-specific AV1 options to the `ffmpeg` command in the `run_ffmpeg_encode` function. Refer to the `ffmpeg` QSV AV1 encoder documentation.
 * **QSV Compatibility:** Quick Sync Video is an Intel-specific hardware acceleration technology. This script will *only* work if your system has a compatible Intel CPU with integrated graphics that supports QSV, the necessary drivers are installed, and the QSV device node (`/dev/dri/cardX`) is accessible.
 
