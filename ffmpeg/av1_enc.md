@@ -69,7 +69,7 @@ A Python script to recursively find video files in a directory, encode them to A
     ```
 
 4.  **Configure Variables:**
-    Edit the configuration variables at the top of the downloaded script file (`/usr/local/bin/av1_qsv_encoder.py`) using a text editor like `nano` or `vim` to match your system and preferences:
+    Edit the configuration variables at the top of the downloaded script file (`/usr/local/bin/av1_enc.py`) using a text editor like `nano` or `vim` to match your system and preferences:
 
     ```python
     # --- Configuration ---
