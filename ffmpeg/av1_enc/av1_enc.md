@@ -1,4 +1,4 @@
-# AV1 Batch Encoder to AV1 (QSV)
+# Batch Encoder to AV1 (QSV)
 
 A Python script to recursively find video files in a directory, encode them to AV1 using Intel Quick Sync Video (QSV) hardware acceleration, replace the original files with the smaller AV1 versions, and provide a live, scrollable curses UI for monitoring progress.
 
