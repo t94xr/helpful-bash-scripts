@@ -1,4 +1,4 @@
-# [AV1 Batch Encoder to AV1 (QSV)](ffmpeg/av1_enc/av1_enc.md)
+# [Batch Encoder to AV1 (QSV)](ffmpeg/av1_enc/av1_enc.md)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Python 3.x](https://img.shields.io/badge/Python-3.x-blue.svg)
