@@ -164,10 +164,7 @@ PageUp/PageDown: Scroll by a page.
 
 ## Example Output
 
-The script provides a dynamic curses-based TUI:
-
 ![](av1_enc_qsv.gif)
-*(This is a placeholder for your GIF. Ensure `av1_enc_qsv.gif` is in the same directory as this README or update the path.)*
 
 The interface shows:
 * A header with keybindings and an optional FFmpeg timeout countdown.
