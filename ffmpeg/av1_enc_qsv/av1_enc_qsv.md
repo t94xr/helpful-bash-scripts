@@ -152,6 +152,7 @@ PageUp/PageDown: Scroll by a page.
 > 
 > Encoding involves heavy I/O operations (reading the source, writing the temporary encoded file). Using a fast drive, ideally an NVMe SSD, for the `TEMP_DIRECTORY` can significantly improve encoding speed and reduce strain on slower drives.
 >
+> **"RAM Disk"**
 > If your system/server has enough memory, [set up a ramdisk](//linuxbabe.com/command-line/create-ramdisk-linux) of about 10-16 GB, depending on your video file sizes for far more efficient IO.
 
 * **BACKUP YOUR VIDEOS:** This script replaces original files with encoded versions upon successful completion. **It is strongly recommended to back up your important video files before running it.**
