@@ -31,4 +31,4 @@ This document provides an overview, features, and usage instructions for the `ma
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](CONTRIBUTING.md)
 
-VDSK (Virtual Disk Script) is a Python utility designed to simplify the creation, mounting, unmounting, resizing, and conversion of virtual disk images on Linux systems. It aims to provide a command-line interface similar to common disk management tools, streamlining workflows for developers, testers, and system administrators who frequently work with disk images. This script is a Python port of an original bash utility, offering more robust error handling and argument parsing.
+VDSK (Virtual Disk Script) is a Python utility designed to simplify the creation, mounting, unmounting, resizing, and conversion of virtual disk images on Linux systems. 
