@@ -24,3 +24,11 @@ This document provides an overview, features, and usage instructions for the `ma
 [![Made with: Shell commands](https://img.shields.io/badge/made%20with-shell%20commands-red)](#script-workflow)
 
 `ramdisk.py` is a Python script designed to simplify creating and removing a RAM disk on Linux systems using `tmpfs`. It provides a command-line interface to manage a RAM disk located at `/ramdisk`.
+
+# [vdsk.py](vdisk/vdisk.md)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](CONTRIBUTING.md)
+
+VDSK (Virtual Disk Script) is a Python utility designed to simplify the creation, mounting, unmounting, resizing, and conversion of virtual disk images on Linux systems. It aims to provide a command-line interface similar to common disk management tools, streamlining workflows for developers, testers, and system administrators who frequently work with disk images. This script is a Python port of an original bash utility, offering more robust error handling and argument parsing.
