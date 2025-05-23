@@ -15,3 +15,12 @@ This script provides a Terminal User Interface (TUI) for batch encoding video fi
 [![Depends on: mkisofs/genisoimage](https://img.shields.io/badge/depends%20on-mkisofs%2Fgenisoimage-lightgrey.svg)](https://shields.io/)
 
 This document provides an overview, features, and usage instructions for the `makeiso.py` Python script, a utility designed to create ISO image files from a source directory.
+
+# [ramdisk.py](local-bin/ramdisk/ramdisk.md)
+
+[![Python Version](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](#important-considerations)
+[![Made with: Shell commands](https://img.shields.io/badge/made%20with-shell%20commands-red)](#script-workflow)
+
+`ramdisk.py` is a Python script designed to simplify creating and removing a RAM disk on Linux systems using `tmpfs`. It provides a command-line interface to manage a RAM disk located at `/ramdisk`.
