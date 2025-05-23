@@ -1,19 +1,19 @@
-# RAM Disk Management Script (ramdisk.py)
+# ramdisk.py
 
 [![Python Version](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](#important-considerations)
 [![Made with: Shell commands](https://img.shields.io/badge/made%20with-shell%20commands-red)](#script-workflow)
 
-`ramdisk.py` is a Python script designed to simplify the creation and removal of a RAM disk on Linux systems using `tmpfs`. It provides a command-line interface to manage a RAM disk located at `/ramdisk`.
+`ramdisk.py` is a Python script designed to simplify creating and removing a RAM disk on Linux systems using `tmpfs`. It provides a command-line interface to manage a RAM disk located at `/ramdisk`.
 
 ## Features
 
 * **Create RAM Disk:** Easily create a RAM disk with a user-specified size (e.g., "4G" for 4 Gigabytes, "512M" for 512 Megabytes).
 * **Remove RAM Disk:** Cleanly unmount and remove the RAM disk.
-* **`tmpfs` Backend:** Utilizes `tmpfs`, which stores files in virtual memory, offering high-speed temporary storage.
+* **`tmpfs` Backend:** This backend utilizes `tmpfs`, which stores files in virtual memory and offers high-speed temporary storage.
 * **Fixed Mount Point:** Operates on a predefined mount point: `/ramdisk`.
-* **Directory Management:** Automatically creates the `/ramdisk` directory if it doesn't exist during creation and removes it during the removal process.
+* **Directory Management:** Automatically creates the `/ramdisk` directory if it doesn't exist during creation and removes it during removal.
 * **Sudo Requirement:** Enforces execution with `sudo` privileges, as mounting and unmounting filesystems are restricted operations.
 * **Input Validation:** Includes basic validation for the size argument format.
 * **Status Messages:** Provides informative messages about its operations and any errors encountered.
@@ -122,7 +122,7 @@ This script is released under the MIT License.
 ```text
 MIT License
 
-Copyright (c) 2025 [Your Name or Organization - if you wish to add]
+Copyright (c) 2025 Cameron Walker - me@cameronwalker.nz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
