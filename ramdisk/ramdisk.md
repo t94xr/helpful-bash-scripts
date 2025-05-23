@@ -1,20 +1,23 @@
-# ramdisk.py
+# RAM Disk Management Script (ramdisk.py)
 
 [![Python Version](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](#important-considerations)
 [![Made with: Shell commands](https://img.shields.io/badge/made%20with-shell%20commands-red)](#script-workflow)
 
-`ramdisk.py` is a Python script designed to simplify creating and removing a RAM disk on Linux systems using `tmpfs`. It provides a command-line interface to manage a RAM disk located at `/ramdisk`.
+`ramdisk.py` is a Python script designed to simplify the creation and removal of RAM disks on Linux systems. It supports both traditional `tmpfs` RAM disks and compressed `ZRAM` RAM disks, providing a command-line interface to manage a RAM disk located at `/ramdisk`.
 
 ## Features
 
-* **Create RAM Disk:** Easily create a RAM disk with a user-specified size (e.g., "4G" for 4 Gigabytes, "512M" for 512 Megabytes).
-* **Remove RAM Disk:** Cleanly unmount and remove the RAM disk.
-* **`tmpfs` Backend:** This backend utilizes `tmpfs`, which stores files in virtual memory and offers high-speed temporary storage.
+* **Dual RAM Disk Types:**
+    * **`tmpfs` RAM Disk:** Create a standard RAM disk stored in volatile system memory.
+    * **`ZRAM` RAM Disk:** Create a compressed RAM disk using ZRAM, potentially saving memory while still offering RAM-like speeds.
+* **User-Specified Size:** Easily create a RAM disk with a defined size (e.g., "4G" for 4 Gigabytes, "512M" for 512 Megabytes, "100K" for 100 Kilobytes).
+* **Simple Removal:** Cleanly unmounts and removes the RAM disk, automatically detecting if it's `tmpfs` or `ZRAM` for appropriate cleanup.
 * **Fixed Mount Point:** Operates on a predefined mount point: `/ramdisk`.
-* **Directory Management:** Automatically creates the `/ramdisk` directory if it doesn't exist during creation and removes it during removal.
+* **Directory Management:** Automatically creates the `/ramdisk` directory if it doesn't exist during creation and removes it during the removal process.
 * **Sudo Requirement:** Enforces execution with `sudo` privileges, as mounting and unmounting filesystems are restricted operations.
+* **Prerequisite Checks:** For ZRAM, checks for necessary utilities like `zramctl` and `mkfs.ext2`.
 * **Input Validation:** Includes basic validation for the size argument format.
 * **Status Messages:** Provides informative messages about its operations and any errors encountered.
 
@@ -22,98 +25,109 @@
 
 The script operates based on the command-line arguments provided.
 
-### RAM Disk Creation (`sudo python3 ramdisk.py <size>`)
+### RAM Disk Creation
 
 1.  **Sudo Check:** Verifies if the script is run with `sudo` privileges. Exits if not.
-2.  **Argument Validation:**
-    * Checks if a size argument is provided.
-    * Validates the size format (must end with 'G' or 'M', preceded by a number).
-3.  **Mount Point Check:** Ensures `/ramdisk` is not already a mount point. If it is, an error is shown, prompting the user to remove it first.
-4.  **Directory Creation:**
-    * If `/ramdisk` does not exist, it attempts to create the directory.
-    * If `/ramdisk` exists but is not a directory, it exits with an error.
-5.  **Mount `tmpfs`:**
-    * Constructs and executes the `mount` command:
-        `mount -t tmpfs -o size=<size_str> tmpfs /ramdisk`
-    * Prints success or error messages based on the outcome of the mount operation. If mounting fails, it attempts to clean up by removing the `/ramdisk` directory if it was created by the script in the current run and is empty.
+2.  **Argument Parsing:** Determines if a `tmpfs` or `ZRAM` disk is requested (via the optional `--zram` flag) and validates the size argument.
+3.  **Mount Point Check:** Ensures `/ramdisk` is not already a mount point.
+4.  **Directory Creation:** If `/ramdisk` does not exist, it's created.
+
+#### `tmpfs` Creation (`sudo python3 ramdisk.py <size>`)
+5.  **Mount `tmpfs`:** Executes `mount -t tmpfs -o size=<size_str> tmpfs /ramdisk`.
+
+#### `ZRAM` Creation (`sudo python3 ramdisk.py <size> --zram`)
+5.  **Prerequisite Check:** Verifies `zramctl` and `mkfs.ext2` (or the configured `ZRAM_FS_TYPE` tool) are available.
+6.  **Load ZRAM Module:** Ensures the `zram` kernel module is loaded using `modprobe zram`.
+7.  **Configure ZRAM Device:**
+    * Uses `zramctl --find --size <size_str> --algorithm <ZRAM_COMP_ALGORITHM>` to find an available ZRAM device (e.g., `/dev/zram0`), set its disk size, and specify the compression algorithm (default: `lz4`).
+8.  **Format ZRAM Device:** Formats the allocated ZRAM device with the specified filesystem (default: `ext2`) using `mkfs.<ZRAM_FS_TYPE> /dev/zramX`.
+9.  **Mount ZRAM Device:** Mounts the formatted ZRAM device to `/ramdisk`.
 
 ### RAM Disk Removal (`sudo python3 ramdisk.py remove`)
 
-1.  **Sudo Check:** Verifies if the script is run with `sudo` privileges. Exits if not.
-2.  **Argument Validation:** Ensures no extra arguments are passed with `remove`.
-3.  **Unmount Operation:**
-    * Checks if `/ramdisk` is currently mounted.
-    * If mounted, it executes the `umount /ramdisk` command.
-    * Prints success or error messages. If unmounting fails (e.g., resource busy), it advises checking for processes using the RAM disk.
-4.  **Directory Removal:**
-    * If `/ramdisk` exists and is a directory, it attempts to remove it using `os.rmdir()`. This will only succeed if the directory is empty (which it should be after a successful `tmpfs` unmount).
-    * Prints success or error messages for directory removal.
+1.  **Sudo Check:** Verifies `sudo` privileges.
+2.  **Mount Information Retrieval:** If `/ramdisk` is mounted, uses `findmnt` (with a fallback to parsing `/proc/mounts`) to determine the source device and filesystem type.
+3.  **Unmount Operation:** Unmounts `/ramdisk` using `umount /ramdisk`.
+4.  **ZRAM Device Reset (if applicable):** If the source device was a ZRAM device (e.g., `/dev/zramX`), it resets the device using `zramctl --reset /dev/zramX`. This frees up the ZRAM device.
+5.  **Directory Removal:** Attempts to remove the `/ramdisk` directory if it exists and is empty.
 
 ## Installation
 
 1.  **Save the Script:**
-    Save the Python code provided into a file named `ramdisk.py`.
+    Save the Python code into a file named `ramdisk.py`.
 
 2.  **Make it Executable (Optional but Recommended):**
     Open your terminal and run:
     ```bash
     chmod +x ramdisk.py
     ```
-    This allows you to run the script as `./ramdisk.py` instead of `python3 ramdisk.py`.
 
 3.  **Dependencies:**
     * Python 3.x
-    * Standard Linux command-line utilities (`mount`, `umount`). These are typically pre-installed on most Linux distributions.
+    * Standard Linux command-line utilities (`mount`, `umount`, `mkdir`, `modprobe`).
+    * **For `tmpfs` (usually pre-installed):** No special dependencies beyond standard utilities.
+    * **For `ZRAM`:**
+        * `util-linux`: Provides the `zramctl` utility.
+            * Debian/Ubuntu: `sudo apt install util-linux`
+            * Fedora: `sudo dnf install util-linux`
+        * `e2fsprogs` (or tools for your chosen `ZRAM_FS_TYPE`): Provides `mkfs.ext2`.
+            * Debian/Ubuntu: `sudo apt install e2fsprogs`
+            * Fedora: `sudo dnf install e2fsprogs`
+        * The `zram` kernel module must be available and loadable.
 
 ## Usage Examples
 
 **Note:** All commands must be run with `sudo`.
 
-1.  **Create a 4GB RAM Disk:**
+1.  **Create a 4GB `tmpfs` RAM Disk:**
     ```bash
     sudo python3 ramdisk.py 4G
     ```
-    If you made it executable:
-    ```bash
-    sudo ./ramdisk.py 4G
-    ```
+    If executable: `sudo ./ramdisk.py 4G`
 
-2.  **Create a 512MB RAM Disk:**
+2.  **Create a 1GB `ZRAM` RAM Disk (compressed):**
+    ```bash
+    sudo python3 ramdisk.py 1G --zram
+    ```
+    If executable: `sudo ./ramdisk.py 1G --zram`
+
+3.  **Create a 512MB `tmpfs` RAM Disk:**
     ```bash
     sudo python3 ramdisk.py 512M
     ```
-    If you made it executable:
-    ```bash
-    sudo ./ramdisk.py 512M
-    ```
 
-3.  **Verify RAM Disk Creation:**
-    After creating the RAM disk, you can check if it's mounted and its size using:
-    ```bash
-    df -h /ramdisk
-    ```
-    Or:
-    ```bash
-    mount | grep /ramdisk
-    ```
+4.  **Verify RAM Disk Creation:**
+    * For both types:
+        ```bash
+        df -h /ramdisk
+        mount | grep /ramdisk
+        ```
+    * Additionally for ZRAM:
+        ```bash
+        zramctl
+        # Check /proc/swaps if you configured it as swap, though this script uses it as a block device for a filesystem
+        ```
 
-4.  **Remove the RAM Disk:**
+5.  **Remove the RAM Disk (works for both `tmpfs` and `ZRAM`):**
     ```bash
     sudo python3 ramdisk.py remove
     ```
-    If you made it executable:
-    ```bash
-    sudo ./ramdisk.py remove
-    ```
+    If executable: `sudo ./ramdisk.py remove`
 
 ## Important Considerations
 
-* **Sudo Privileges:** The script *must* be run with `sudo` as it performs system-level operations like mounting and unmounting filesystems.
-* **Linux Specific:** This script is designed for Linux systems due to its reliance on `tmpfs` and standard Linux `mount`/`umount` commands. It will not work on Windows or macOS without significant modifications.
-* **Data Volatility:** Files stored in a `tmpfs` RAM disk reside in virtual memory. **All data will be lost if the RAM disk is unmounted or if the system is rebooted.** It is suitable for temporary files and speeding up I/O-intensive tasks where data persistence is not required.
-* **Mount Point:** The script uses a hardcoded mount point `/ramdisk`. Ensure this path is suitable for your system and does not conflict with existing critical directories.
-* **Error Handling:** The script includes basic error handling and will print messages to `stdout` or `stderr` if issues occur (e.g., mount failure, directory creation failure, permissions issues).
-* **Resource Busy:** If you encounter an error during removal stating that the device is busy (`umount: /ramdisk: target is busy.`), it means some process is still using files or has its current working directory within `/ramdisk`. You'll need to identify and stop these processes before the RAM disk can be unmounted. Commands like `lsof /ramdisk` or `fuser -m /ramdisk` can help identify such processes.
+* **Sudo Privileges:** Essential for all operations.
+* **Linux Specific:** Relies on Linux-specific tools and kernel features (`tmpfs`, `zram`, `mount`, `zramctl`).
+* **Data Volatility:**
+    * **`tmpfs`:** Data is stored in RAM and is lost on unmount or reboot.
+    * **`ZRAM`:** Data is stored in a compressed form in RAM. It is also lost on unmount (which includes ZRAM device reset) or reboot.
+* **Mount Point:** Uses the hardcoded `/ramdisk` mount point.
+* **ZRAM Specifics:**
+    * **Compression:** ZRAM uses compression (default `lz4` in the script). The actual memory used will be less than the specified disk size, depending on data compressibility.
+    * **Performance:** ZRAM involves a CPU overhead for compression/decompression. For highly compressible data, it can effectively increase available RAM for the disk. `lz4` is generally fast.
+    * **Kernel Module:** The `zram` kernel module must be available.
+    * **Filesystem on ZRAM:** The script formats the ZRAM device with `ext2` by default. This is a lightweight filesystem suitable for temporary use.
+* **Error Handling:** The script provides basic error messages. If `umount` fails due to "target is busy," use `lsof /ramdisk` or `fuser -vm /ramdisk` to find and stop processes using the RAM disk.
 
 ## License
 
